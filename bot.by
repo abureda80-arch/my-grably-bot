@@ -1,0 +1,55 @@
+import os
+import asyncio
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
+import yt_dlp
+
+# التوكن الخاص بك الذي أرسلته
+TOKEN = '7948066297:AAFWxNQ7hZjOLhMVtGwoR-xQ4sZfNqWn_wI'
+
+# إعدادات المحرك (Grably Engine)
+def download_video(url):
+    ydl_opts = {
+        'format': 'best[ext=mp4]/best', # اختيار أفضل جودة بصيغة mp4
+        'outtmpl': 'video_%(id)s.%(ext)s', # تسمية الملف برقم تعريفي فريد
+        'max_filesize': 45 * 1024 * 1024,  # حد الأمان لتليجرام (45 ميجا)
+        'quiet': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
+
+# معالجة الرسائل
+async def handle_video_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
+    
+    if "http" not in url:
+        await update.message.reply_text("أرسل لي رابطاً صالحاً يا علي 🔗")
+        return
+
+    msg = await update.message.reply_text("جاري المعالجة وسحب الفيديو... انتظر لحظة ⏳")
+    
+    try:
+        # تنفيذ التحميل في مسار منفصل لعدم تجميد البوت
+        file_path = await asyncio.to_thread(download_video, url)
+        
+        await update.message.reply_video(
+            video=open(file_path, 'rb'),
+            caption="تم التحميل بنجاح بواسطة بوت نور 🎥"
+        )
+        
+        # حذف الملف من السيرفر بعد الإرسال لتوفير المساحة
+        os.remove(file_path)
+        await msg.delete()
+        
+    except Exception as e:
+        await msg.edit_text(f"عذراً، حدث خطأ أثناء التحميل: {str(e)}")
+        if 'file_path' in locals() and os.path.exists(file_path):
+            os.remove(file_path)
+
+# تشغيل البوت
+if __name__ == '__main__':
+    print("البوت يعمل الآن يا علي... جرب إرسال رابط فيديو!")
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_video_request))
+    app.run_polling()
